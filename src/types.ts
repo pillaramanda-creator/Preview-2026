@@ -1,6 +1,6 @@
 export type ViewMode = 'gantt' | 'table' | 'calendar';
 
-// FIX: Convert enum to const object for erasableSyntaxOnly
+// Value (const object)
 export const TaskType = {
   TASK: 'Task',
   SUBTASK: 'Subtask',
@@ -8,7 +8,7 @@ export const TaskType = {
 } as const;
 export type TaskType = (typeof TaskType)[keyof typeof TaskType];
 
-// FIX: Convert enum to const object for erasableSyntaxOnly
+// Value (const object)
 export const TaskStatus = {
   TODO: 'To Do',
   IN_PROGRESS: 'In Progress',
@@ -17,26 +17,27 @@ export const TaskStatus = {
 } as const;
 export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
 
+// Types (Interfaces)
 export interface TeamMember {
   id: string;
   name: string;
   role: string;
   avatar: string;
-  timeOff: string[]; // ISO Date strings
+  timeOff: string[];
 }
 
 export interface Task {
   id: string;
   name: string;
-  parentId?: string | null; // For grouping
+  parentId?: string | null;
   assigneeId: string | null;
-  startDate: string; // ISO Date string
-  endDate: string; // ISO Date string
-  duration: number; // days
+  startDate: string;
+  endDate: string;
+  duration: number;
   status: TaskStatus;
   type: TaskType;
-  dependencies: string[]; // IDs of tasks this task depends on
-  progress: number; // 0-100
+  dependencies: string[];
+  progress: number;
   description?: string;
   projectedHours: number;
   actualHours: number;
@@ -60,6 +61,6 @@ export interface ProjectData {
   tasks: Task[];
   team: TeamMember[];
   notes: Note[];
-  holidays: string[]; // ISO Date strings
-  lastAnalysis?: AISummary; // Persist summary for sharing
+  holidays: string[];
+  lastAnalysis?: AISummary;
 }

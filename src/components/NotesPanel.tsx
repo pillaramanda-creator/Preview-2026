@@ -1,179 +1,207 @@
-import React, { useState, useEffect } from 'react';
-import type { ProjectData, AISummary } from '../types';
-import { generateProjectSummary } from '../services/geminiService';
-import { Sparkles, AlertTriangle, Send, X } from 'lucide-react';
+import React, { useState } from 'react';
+import type { ProjectData } from '../types';
+import { TaskStatus } from '../types';
+import { Calendar as CalendarIcon, ArrowRight, ChevronLeft, ChevronRight, Palmtree } from 'lucide-react';
 
-interface NotesPanelProps {
+interface CalendarViewProps {
   data: ProjectData;
-  onAddNote: (note: any) => void;
-  onUpdateSummary: (summary: AISummary) => void;
-  onClose?: () => void;
+  onEditTask: (task: any) => void;
   readOnly?: boolean;
 }
 
-export const NotesPanel: React.FC<NotesPanelProps> = ({ data, onAddNote, onUpdateSummary, onClose, readOnly }) => {
-  const [loading, setLoading] = useState(false);
-  const [summary, setSummary] = useState<AISummary | null>(null);
-  const [newNote, setNewNote] = useState('');
-  const [newNoteType, setNewNoteType] = useState('general');
+export const CalendarView: React.FC<CalendarViewProps> = ({ data, onEditTask, readOnly }) => {
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [currentDate, setCurrentDate] = useState(new Date());
 
-  useEffect(() => {
-    // If data comes with a summary (e.g. from shared link), use it
-    if (data.lastAnalysis) {
-        setSummary(data.lastAnalysis);
-    }
-  }, [data.lastAnalysis]);
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  };
 
-  const handleGenerateSummary = async () => {
-    setLoading(true);
-    try {
-      const result = await generateProjectSummary(data);
-      setSummary(result);
-      onUpdateSummary(result);
-    } catch (e) {
-      console.error(e);
-      alert('Could not generate AI summary. Check API configuration.');
-    } finally {
-      setLoading(false);
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+
+  const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+  
+  const startDay = startOfMonth.getDay();
+  const daysInMonth = endOfMonth.getDate();
+
+  const days = [];
+  // Pad empty days
+  for(let i=0; i<startDay; i++) days.push(null);
+  // Fill days
+  for(let i=1; i<=daysInMonth; i++) days.push(new Date(currentDate.getFullYear(), currentDate.getMonth(), i));
+
+  const getTasksForDate = (date: Date) => {
+    const dStr = date.toISOString().split('T')[0];
+    return data.tasks.filter(t => t.endDate === dStr);
+  };
+
+  const isHoliday = (date: Date) => {
+    const dStr = date.toISOString().split('T')[0];
+    return data.holidays.includes(dStr);
+  };
+
+  const handleTaskClick = (e: React.MouseEvent, task: any) => {
+    e.stopPropagation();
+    if (selectedTaskId === task.id) {
+      // Second click opens full details
+      onEditTask(task);
+      setSelectedTaskId(null);
+    } else {
+      // First click shows summary popover
+      setSelectedTaskId(task.id);
     }
   };
 
-  const handleAddNote = (e: React.FormEvent) => {
-    e.preventDefault();
-    if(!newNote.trim()) return;
-    
-    onAddNote({
-      id: Math.random().toString(36).substr(2, 9),
-      content: newNote,
-      timestamp: new Date().toISOString().split('T')[0],
-      author: 'Current User', // Mocked
-      type: newNoteType
-    });
-    setNewNote('');
+  // Check if a date is "today" (real time)
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() && 
+           date.getMonth() === today.getMonth() && 
+           date.getFullYear() === today.getFullYear();
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-white shadow-sm flex justify-between items-center">
-        <h3 className="font-bold text-lg text-slate-800">Project Log & AI</h3>
-        <div className="flex items-center gap-2">
-          {!readOnly && (
+    <div className="bg-white rounded-lg shadow p-6 border border-gray-200 h-full flex flex-col" onClick={() => setSelectedTaskId(null)}>
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-4">
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 min-w-[200px]">
+             <CalendarIcon className="text-[#FA4616]" />
+              {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </h2>
+          <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
             <button 
-                onClick={handleGenerateSummary}
-                disabled={loading}
-                className="flex items-center gap-2 bg-gradient-to-r from-[#0021A5] to-[#FA4616] text-white px-3 py-1.5 rounded-full text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
+              onClick={handlePrevMonth}
+              className="p-1.5 hover:bg-white hover:shadow-sm rounded-md text-slate-600 transition-all"
             >
-                <Sparkles size={16} />
-                {loading ? 'Thinking...' : 'AI Summary'}
+              <ChevronLeft size={18} />
             </button>
-          )}
-          {onClose && (
             <button 
-              onClick={onClose}
-              className="p-1.5 hover:bg-slate-100 rounded-full text-gray-500 transition-colors"
+              onClick={() => setCurrentDate(new Date())}
+              className="px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-white hover:shadow-sm rounded-md transition-all"
             >
-              <X size={20} />
+              Today
             </button>
-          )}
+            <button 
+              onClick={handleNextMonth}
+              className="p-1.5 hover:bg-white hover:shadow-sm rounded-md text-slate-600 transition-all"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+        
+        <div className="text-sm text-gray-500">
+          Click task to view info{readOnly ? '' : ', click again to edit'}.
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        
-        {/* AI Output Section */}
-        {summary && (
-          <div className="bg-white rounded-xl shadow-sm border border-blue-100 overflow-hidden animate-fade-in">
-             <div className="bg-blue-50 px-4 py-2 border-b border-blue-100">
-               <span className="text-xs font-bold text-[#0021A5] uppercase tracking-wider">AI Executive Brief</span>
-             </div>
-             <div className="p-4 space-y-4">
-               <div className="prose prose-sm text-slate-700">
-                 <p>{summary.summary}</p>
+      <div className="grid grid-cols-7 gap-px bg-gray-200 border border-gray-200 rounded-lg overflow-hidden flex-1 min-h-0">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          <div key={d} className="bg-slate-50 p-2 text-center text-xs font-bold text-gray-500 uppercase">
+            {d}
+          </div>
+        ))}
+
+        {days.map((date, idx) => {
+           if (!date) return <div key={`empty-${idx}`} className="bg-white" />;
+           
+           const tasksDue = getTasksForDate(date);
+           const todayHighlight = isToday(date);
+           const holiday = isHoliday(date);
+
+           return (
+             <div key={idx} className={`p-2 hover:bg-slate-50 transition-colors flex flex-col min-h-[100px] relative 
+               ${holiday ? 'bg-orange-50/30' : 'bg-white'} 
+               ${todayHighlight ? 'bg-blue-50/30' : ''}`
+             }>
+               <div className="flex justify-between items-start mb-1">
+                  <span className={`text-sm font-medium ${todayHighlight ? 'text-[#0021A5] bg-blue-100 w-7 h-7 flex items-center justify-center rounded-full' : 'text-gray-700'}`}>
+                    {date.getDate()}
+                  </span>
+                  {holiday && (
+                    <span title="University Holiday" className="text-[#FA4616]">
+                      <Palmtree size={14} />
+                    </span>
+                  )}
                </div>
                
-               {summary.risks.length > 0 && (
-                 <div className="bg-red-50 p-3 rounded-lg border border-red-100">
-                   <h4 className="flex items-center gap-2 text-red-800 font-bold text-sm mb-2">
-                     <AlertTriangle size={14} /> Risk Assessment
-                   </h4>
-                   <ul className="list-disc pl-4 text-xs text-red-700 space-y-1">
-                     {summary.risks.map((risk, i) => <li key={i}>{risk}</li>)}
-                   </ul>
-                 </div>
-               )}
+               <div className="flex-1 overflow-y-auto space-y-1 scrollbar-hide">
+                 {holiday && (
+                   <div className="text-[10px] font-bold text-[#FA4616] uppercase tracking-wider mb-1">Holiday</div>
+                 )}
+                 {tasksDue.map(task => {
+                   const assignee = data.team.find(u => u.id === task.assigneeId);
+                   const isSelected = selectedTaskId === task.id;
 
-              {summary.mitigations.length > 0 && (
-                 <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-                   <h4 className="flex items-center gap-2 text-[#22884C] font-bold text-sm mb-2">
-                     <Sparkles size={14} /> Suggested Mitigations
-                   </h4>
-                   <ul className="list-disc pl-4 text-xs text-[#22884C] space-y-1">
-                     {summary.mitigations.map((m, i) => <li key={i}>{m}</li>)}
-                   </ul>
-                 </div>
-               )}
-             </div>
-          </div>
-        )}
+                   return (
+                     <div key={task.id} className="relative">
+                        {/* Task Pill */}
+                        <div 
+                          onClick={(e) => handleTaskClick(e, task)}
+                          className={`text-xs p-1.5 rounded border-l-2 shadow-sm cursor-pointer transition-all ${
+                            isSelected 
+                              ? 'bg-[#0021A5] text-white border-[#001b87] ring-2 ring-blue-200 z-10' 
+                              : 'bg-white border-[#0021A5] hover:bg-blue-50 text-slate-700'
+                          }`}
+                        >
+                            <div className="truncate font-medium">{task.name}</div>
+                            {assignee && !isSelected && (
+                                <div className="flex items-center gap-1 mt-1 opacity-75">
+                                    <img src={assignee.avatar} className="w-3 h-3 rounded-full"/>
+                                    <span className="text-[10px]">{assignee.name.split(' ')[0]}</span>
+                                </div>
+                            )}
+                        </div>
 
-        {/* Input Note */}
-        {!readOnly && (
-            <form onSubmit={handleAddNote} className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm transition-shadow focus-within:shadow-md focus-within:border-blue-200">
-            <textarea 
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                placeholder="Log missed deadline, communication, or notes..."
-                className="w-full text-sm border-0 focus:ring-0 p-2 resize-none mb-2 bg-slate-50 rounded-lg text-slate-800"
-                rows={3}
-            />
-            <div className="flex justify-between items-center pt-1">
-                <select 
-                value={newNoteType} 
-                onChange={(e) => setNewNoteType(e.target.value)}
-                className="text-xs border-none bg-slate-100 rounded-md py-1.5 px-2 text-slate-600 focus:ring-0 cursor-pointer hover:bg-slate-200 transition-colors"
-                >
-                <option value="general">General</option>
-                <option value="missed_deadline">Missed Deadline</option>
-                <option value="communication">Communication</option>
-                <option value="risk">Risk</option>
-                </select>
-                <button type="submit" className="bg-[#0021A5] text-white p-2 rounded-lg hover:bg-[#001b87] transition-colors shadow-sm">
-                <Send size={14} />
-                </button>
-            </div>
-            </form>
-        )}
+                        {/* Hover/Select Popover */}
+                        {isSelected && (
+                          <div className="absolute left-full top-0 ml-2 z-50 w-64 bg-white rounded-xl shadow-xl border border-gray-100 p-4 animate-fade-in text-left">
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-bold text-slate-800 text-sm leading-tight">{task.name}</h4>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                task.status === TaskStatus.COMPLETED ? 'bg-green-100 text-[#22884C]' : 'bg-blue-100 text-[#0021A5]'
+                              }`}>
+                                {task.status}
+                              </span>
+                            </div>
+                            
+                            <div className="space-y-2 mb-3">
+                               <div className="flex items-center gap-2 text-xs text-gray-600">
+                                 <CalendarIcon size={12} />
+                                 <span>Due: {new Date(task.endDate).toLocaleDateString()}</span>
+                               </div>
+                               {assignee && (
+                                 <div className="flex items-center gap-2 text-xs text-gray-600">
+                                   <img src={assignee.avatar} className="w-4 h-4 rounded-full"/>
+                                   <span>{assignee.name}</span>
+                                 </div>
+                               )}
+                            </div>
 
-        {/* Timeline Stream */}
-        <div className="space-y-4">
-           {data.notes.slice().reverse().map(note => (
-             <div key={note.id} className="relative pl-4 border-l-2 border-gray-200 pb-2 group">
-               <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ring-1 ring-white
-                 ${note.type === 'missed_deadline' ? 'bg-[#FA4616]' : 
-                   note.type === 'risk' ? 'bg-amber-500' : 
-                   note.type === 'communication' ? 'bg-[#0021A5]' : 'bg-slate-400'}`}>
-               </div>
-               <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm group-hover:shadow-md transition-all">
-                   <div className="flex justify-between items-start mb-1">
-                      <span className="text-xs font-bold text-slate-700">{note.author}</span>
-                      <span className="text-[10px] text-gray-400 font-mono">{note.timestamp}</span>
-                   </div>
-                   <p className="text-sm text-gray-600 leading-relaxed">{note.content}</p>
-                   {note.type !== 'general' && (
-                     <div className="mt-2">
-                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium inline-block uppercase tracking-wider
-                         ${note.type === 'missed_deadline' ? 'bg-orange-50 text-[#FA4616] border border-orange-100' : 
-                         note.type === 'risk' ? 'bg-amber-50 text-amber-600 border border-amber-100' : 
-                         note.type === 'communication' ? 'bg-blue-50 text-[#0021A5] border border-blue-100' : 'bg-slate-100 text-slate-600'}`}>
-                         {note.type.replace('_', ' ')}
-                       </span>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditTask(task);
+                              }}
+                              className="w-full text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded flex items-center justify-center gap-1 transition-colors"
+                            >
+                              {readOnly ? 'View Details' : 'Edit Details'} <ArrowRight size={12} />
+                            </button>
+                            
+                            {/* Arrow Pointer */}
+                            <div className="absolute right-full top-3 -mr-1 w-2 h-2 bg-white transform rotate-45 border-l border-b border-gray-100"></div>
+                          </div>
+                        )}
                      </div>
-                   )}
+                   );
+                 })}
                </div>
              </div>
-           ))}
-        </div>
+           );
+        })}
       </div>
     </div>
   );

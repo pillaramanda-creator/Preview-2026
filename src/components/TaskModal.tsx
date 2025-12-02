@@ -1,299 +1,266 @@
-import React, { useState, useEffect } from 'react';
-import type { Task, TeamMember } from '../types';
-import { TaskType, TaskStatus } from '../types';
-import { X, Calendar as CalendarIcon, Clock, FolderTree } from 'lucide-react';
+import React, { useState } from 'react';
+import type { ProjectData, Task } from '../types';
+import { TaskStatus, TaskType } from '../types';
+import { Pencil, Trash2, Plus, GitMerge, FolderTree, GripVertical } from 'lucide-react';
 
-interface TaskModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (task: Task) => void;
-  onDelete: (taskId: string) => void;
-  task: Task | null;
-  team: TeamMember[];
-  allTasks: Task[];
+interface TaskTableProps {
+  data: ProjectData;
+  onUpdateTask: (taskId: string, field: string, value: any) => void;
+  onAddTask: () => void;
+  onDeleteTask: (taskId: string) => void;
+  onEditTask: (task: any) => void;
+  onReorderTasks: (tasks: Task[]) => void;
   readOnly?: boolean;
 }
 
-export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, onDelete, task, team, allTasks, readOnly }) => {
-  const [formData, setFormData] = useState<Partial<Task>>({
-    name: '',
-    status: TaskStatus.TODO,
-    type: TaskType.TASK,
-    progress: 0,
-    dependencies: [],
-    projectedHours: 0,
-    actualHours: 0,
-    parentId: null
-  });
+export const TaskTable: React.FC<TaskTableProps> = ({ 
+  data, 
+  onUpdateTask, 
+  onAddTask, 
+  onDeleteTask, 
+  onEditTask,
+  onReorderTasks,
+  readOnly
+}) => {
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (task) {
-      setFormData({ ...task });
-    } else {
-      // Default for new task
-      setFormData({
-        id: Math.random().toString(36).substr(2, 9),
-        name: '',
-        status: TaskStatus.TODO,
-        type: TaskType.TASK,
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
-        duration: 1,
-        progress: 0,
-        dependencies: [],
-        assigneeId: '',
-        projectedHours: 0,
-        actualHours: 0,
-        parentId: null
-      });
+  // Helper to determine root group for coloring
+  const getPhaseIndex = (task: Task, allTasks: Task[]) => {
+    let current = task;
+    while (current.parentId) {
+      const parent = allTasks.find(t => t.id === current.parentId);
+      if (parent) {
+        current = parent;
+      } else {
+        break;
+      }
     }
-  }, [task, isOpen]);
-
-  if (!isOpen) return null;
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!readOnly && formData.name && formData.startDate && formData.endDate) {
-      onSave(formData as Task);
-      onClose();
-    }
+    const roots = allTasks.filter(t => !t.parentId).map(t => t.id);
+    return roots.indexOf(current.id);
   };
 
-  const handleDependencyChange = (depId: string) => {
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
     if (readOnly) return;
-    const currentDeps = formData.dependencies || [];
-    if (currentDeps.includes(depId)) {
-      setFormData({ ...formData, dependencies: currentDeps.filter(d => d !== depId) });
-    } else {
-      setFormData({ ...formData, dependencies: [...currentDeps, depId] });
-    }
+    setDraggedTaskId(taskId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!readOnly) e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetTaskId: string) => {
+    e.preventDefault();
+    if (readOnly || !draggedTaskId || draggedTaskId === targetTaskId) return;
+
+    const sourceIndex = data.tasks.findIndex(t => t.id === draggedTaskId);
+    const targetIndex = data.tasks.findIndex(t => t.id === targetTaskId);
+
+    if (sourceIndex === -1 || targetIndex === -1) return;
+
+    const newTasks = [...data.tasks];
+    const [movedTask] = newTasks.splice(sourceIndex, 1);
+    newTasks.splice(targetIndex, 0, movedTask);
+
+    onReorderTasks(newTasks);
+    setDraggedTaskId(null);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-fade-in-up border border-gray-100">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-slate-50">
-          <h2 className="text-xl font-bold text-slate-800">
-            {readOnly ? 'Task Details' : (task ? 'Edit Task' : 'Create New Task')}
-          </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-            <X size={24} />
-          </button>
-        </div>
+    <div className="flex flex-col h-full bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+      <div className="overflow-auto flex-1 bg-slate-50/50">
+        <table className="w-full text-left border-collapse min-w-[1400px]">
+          <thead className="bg-slate-50 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
+            <tr>
+              <th className="px-2 py-3 w-8"></th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-8">#</th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[15%]">Task Name</th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Parent Group</th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[8%]">Type</th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[10%]">Assignee</th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[8%]">Status</th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Timeline</th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[6%] text-center">Proj.</th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[6%] text-center">Act.</th>
+              <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[8%]">Dependencies</th>
+              {!readOnly && <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-16 text-right">Actions</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {data.tasks.map((task, index) => {
+              const assignee = data.team.find(u => u.id === task.assigneeId);
+              const dependencies = task.dependencies
+                .map(depId => data.tasks.find(t => t.id === depId)?.name)
+                .filter(Boolean)
+                .join(', ');
 
-        {/* Form Body */}
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50/30">
-          <form id="taskForm" onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Task Name</label>
-                <input
-                  type="text"
-                  required
-                  disabled={readOnly}
-                  value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0021A5] focus:border-[#0021A5] outline-none transition-all bg-white text-slate-900 disabled:bg-slate-100"
-                  placeholder="e.g. Design Homepage"
-                />
-              </div>
-              
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                    <FolderTree size={14} className="text-gray-400"/> Parent Task Group
-                </label>
-                <select
-                    value={formData.parentId || ''}
-                    disabled={readOnly}
-                    onChange={e => setFormData({ ...formData, parentId: e.target.value || null })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0021A5] outline-none bg-white text-slate-900 disabled:bg-slate-100"
+              const hoursDiff = task.actualHours - task.projectedHours;
+              const hoursColor = hoursDiff > 0 ? 'text-[#FA4616]' : hoursDiff < 0 ? 'text-[#22884C]' : 'text-slate-700';
+              const phaseIndex = getPhaseIndex(task, data.tasks);
+              const rowBgClass = phaseIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50';
+
+              return (
+                <tr 
+                  key={task.id} 
+                  className={`${rowBgClass} hover:bg-blue-50/50 transition-colors group relative`}
+                  draggable={!readOnly}
+                  onDragStart={(e) => handleDragStart(e, task.id)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, task.id)}
                 >
-                    <option value="">(None - Top Level Task)</option>
-                    {allTasks
-                        .filter(t => t.id !== formData.id && !t.parentId) // Only show potential parents, avoid cycles or multi-level depth for simplicity
-                        .map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                </select>
-                {!readOnly && <p className="text-xs text-gray-500 mt-1">Group this task under a parent task to inherit its color coding.</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                <select
-                  value={formData.type}
-                  disabled={readOnly}
-                  onChange={e => setFormData({ ...formData, type: e.target.value as TaskType })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0021A5] outline-none bg-white text-slate-900 disabled:bg-slate-100"
-                >
-                  <option value={TaskType.TASK}>Task</option>
-                  <option value={TaskType.SUBTASK}>Subtask</option>
-                  <option value={TaskType.MILESTONE}>Milestone</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                <select
-                  value={formData.status}
-                  disabled={readOnly}
-                  onChange={e => setFormData({ ...formData, status: e.target.value as TaskStatus })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0021A5] outline-none bg-white text-slate-900 disabled:bg-slate-100"
-                >
-                  {Object.values(TaskStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    required
-                    disabled={readOnly}
-                    value={formData.startDate}
-                    onChange={e => setFormData({ ...formData, startDate: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0021A5] outline-none bg-white text-slate-900 disabled:bg-slate-100"
-                  />
-                  <CalendarIcon className="absolute right-3 top-2.5 text-gray-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">End Date</label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    required
-                    disabled={readOnly}
-                    value={formData.endDate}
-                    onChange={e => setFormData({ ...formData, endDate: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0021A5] outline-none bg-white text-slate-900 disabled:bg-slate-100"
-                  />
-                  <CalendarIcon className="absolute right-3 top-2.5 text-gray-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                   Projected Hours <Clock size={14} className="text-gray-400"/>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  disabled={readOnly}
-                  value={formData.projectedHours}
-                  onChange={e => setFormData({ ...formData, projectedHours: parseInt(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0021A5] outline-none bg-white text-slate-900 disabled:bg-slate-100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                   Actual Hours <Clock size={14} className="text-gray-400"/>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  disabled={readOnly}
-                  value={formData.actualHours}
-                  onChange={e => setFormData({ ...formData, actualHours: parseInt(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0021A5] outline-none bg-white text-slate-900 disabled:bg-slate-100"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Assignee</label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {team.map(member => (
-                    <div
-                      key={member.id}
-                      onClick={() => !readOnly && setFormData({ ...formData, assigneeId: formData.assigneeId === member.id ? null : member.id })}
-                      className={`flex items-center gap-2 p-2 rounded-lg border transition-all bg-white ${!readOnly ? 'cursor-pointer' : ''} ${
-                        formData.assigneeId === member.id 
-                          ? 'border-[#0021A5] bg-blue-50 ring-1 ring-[#0021A5]' 
-                          : 'border-gray-200 hover:border-gray-300'
+                  <td className="px-2 py-3 text-center text-gray-300">
+                    {!readOnly && <GripVertical size={16} className="cursor-move hover:text-gray-500" />}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-400 font-mono">{index + 1}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center">
+                      {task.parentId && <div className="w-3 h-3 border-l border-b border-gray-300 mr-2 rounded-bl-sm opacity-50" />}
+                      <input 
+                        type="text" 
+                        value={task.name}
+                        disabled={readOnly}
+                        onChange={(e) => onUpdateTask(task.id, 'name', e.target.value)}
+                        className={`w-full bg-transparent border border-transparent hover:border-gray-200 focus:bg-white focus:border-[#0021A5]/30 rounded px-2 py-1 text-sm font-medium focus:ring-2 focus:ring-[#0021A5]/10 outline-none transition-all disabled:hover:border-transparent ${
+                          task.type === TaskType.MILESTONE ? 'text-[#FA4616]' : 'text-slate-700'
+                        } ${task.status === TaskStatus.COMPLETED ? 'line-through text-gray-400' : ''}`}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="relative">
+                      <select
+                        value={task.parentId || ''}
+                        disabled={readOnly}
+                        onChange={(e) => onUpdateTask(task.id, 'parentId', e.target.value || null)}
+                        className="w-full text-xs border border-transparent hover:border-gray-200 bg-transparent focus:bg-white rounded px-2 py-1.5 focus:ring-2 focus:ring-[#0021A5]/10 outline-none text-slate-600 pl-7 disabled:hover:border-transparent appearance-none"
+                      >
+                        <option value="">(None)</option>
+                        {data.tasks.filter(t => t.id !== task.id && !t.parentId).map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                      <FolderTree size={12} className="absolute left-2 top-2 text-gray-400 pointer-events-none"/>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={task.type}
+                      disabled={readOnly}
+                      onChange={(e) => onUpdateTask(task.id, 'type', e.target.value)}
+                      className={`text-xs border border-gray-200 bg-white rounded-md px-2 py-1.5 font-medium cursor-pointer focus:ring-2 focus:ring-[#0021A5]/10 outline-none shadow-sm w-full disabled:cursor-default ${
+                        task.type === TaskType.MILESTONE ? 'bg-orange-50 text-[#FA4616] border-orange-200' : 
+                        task.type === TaskType.SUBTASK ? 'bg-blue-50 text-[#0021A5] border-blue-200' : 'bg-white text-slate-700'
                       }`}
                     >
-                      <img src={member.avatar} alt={member.name} className="w-6 h-6 rounded-full" />
-                      <span className="text-sm truncate">{member.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-2">Dependencies</label>
-                <div className="border border-gray-200 rounded-lg p-3 max-h-32 overflow-y-auto space-y-2 bg-white">
-                  {allTasks.filter(t => t.id !== formData.id).map(t => (
-                    <label key={t.id} className={`flex items-center gap-2 text-sm text-slate-700 p-1.5 rounded transition-colors ${!readOnly ? 'cursor-pointer hover:bg-slate-50' : ''}`}>
+                      <option value={TaskType.TASK}>Task</option>
+                      <option value={TaskType.SUBTASK}>Subtask</option>
+                      <option value={TaskType.MILESTONE}>Milestone</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={task.assigneeId || ''}
+                      disabled={readOnly}
+                      onChange={(e) => onUpdateTask(task.id, 'assigneeId', e.target.value || null)}
+                      className="w-full text-xs border border-transparent hover:border-gray-200 bg-transparent focus:bg-white rounded px-2 py-1.5 focus:ring-2 focus:ring-[#0021A5]/10 focus:border-[#0021A5]/30 outline-none text-slate-700 disabled:hover:border-transparent appearance-none"
+                    >
+                      <option value="">Unassigned</option>
+                      {data.team.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                     <select 
+                      value={task.status}
+                      disabled={readOnly}
+                      onChange={(e) => onUpdateTask(task.id, 'status', e.target.value)}
+                      className={`text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-[#0021A5]/10 focus:border-[#0021A5]/30 p-1.5 w-full bg-white shadow-sm font-medium disabled:cursor-default ${
+                        task.status === TaskStatus.COMPLETED ? 'text-[#22884C] bg-green-50 border-green-200' : 'text-slate-700'
+                      }`}
+                    >
+                      {Object.values(TaskStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-1.5">
                       <input 
-                        type="checkbox"
+                        type="date" 
+                        value={task.startDate}
                         disabled={readOnly}
-                        checked={formData.dependencies?.includes(t.id)}
-                        onChange={() => handleDependencyChange(t.id)}
-                        className="rounded text-[#0021A5] focus:ring-[#0021A5]"
+                        onChange={(e) => onUpdateTask(task.id, 'startDate', e.target.value)}
+                        className="text-xs border border-transparent hover:border-gray-200 rounded px-1.5 py-1 bg-transparent focus:bg-white text-gray-600 focus:ring-2 focus:ring-[#0021A5]/10 focus:border-[#0021A5]/30 outline-none w-full disabled:hover:border-transparent"
                       />
-                      <span className="truncate">{t.name}</span>
-                    </label>
-                  ))}
-                  {allTasks.length <= 1 && <p className="text-xs text-gray-400 italic">No other tasks available</p>}
-                </div>
-              </div>
-              
-               <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                <textarea
-                  value={formData.description || ''}
-                  disabled={readOnly}
-                  onChange={e => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0021A5] outline-none resize-none bg-white text-slate-900 disabled:bg-slate-100"
-                  rows={3}
-                  placeholder="Additional task details..."
-                />
-              </div>
-            </div>
-          </form>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-between bg-slate-50">
-          {!readOnly && task ? (
-             <button 
-             type="button"
-             onClick={() => {
-               if(window.confirm('Are you sure you want to delete this task?')) {
-                 onDelete(task.id);
-                 onClose();
-               }
-             }}
-             className="px-4 py-2 text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
-           >
-             Delete Task
-           </button>
-          ) : <div></div>}
-         
-          <div className="flex gap-3">
-            <button 
-              type="button" 
-              onClick={onClose}
-              className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors bg-white border border-gray-200 shadow-sm"
-            >
-              {readOnly ? 'Close' : 'Cancel'}
-            </button>
-            {!readOnly && (
-                <button 
-                type="submit" 
-                form="taskForm"
-                className="px-6 py-2 bg-[#0021A5] text-white font-medium rounded-lg hover:bg-[#001b87] shadow-md shadow-blue-200 transition-all transform hover:scale-105"
-                >
-                {task ? 'Save Changes' : 'Create Task'}
-                </button>
-            )}
-          </div>
-        </div>
+                      <input 
+                        type="date" 
+                        value={task.endDate}
+                        disabled={readOnly}
+                        onChange={(e) => onUpdateTask(task.id, 'endDate', e.target.value)}
+                        className="text-xs border border-transparent hover:border-gray-200 rounded px-1.5 py-1 bg-transparent focus:bg-white text-gray-600 focus:ring-2 focus:ring-[#0021A5]/10 focus:border-[#0021A5]/30 outline-none w-full disabled:hover:border-transparent"
+                      />
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <input 
+                      type="number"
+                      value={task.projectedHours}
+                      disabled={readOnly}
+                      onChange={(e) => onUpdateTask(task.id, 'projectedHours', parseInt(e.target.value) || 0)}
+                      className="w-full text-center text-xs bg-white border border-gray-200 rounded-md py-1.5 shadow-sm focus:ring-2 focus:ring-[#0021A5]/10 focus:border-[#0021A5]/30 outline-none font-medium text-slate-700 disabled:bg-transparent disabled:border-transparent"
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                     <input 
+                        type="number"
+                        value={task.actualHours}
+                        disabled={readOnly}
+                        onChange={(e) => onUpdateTask(task.id, 'actualHours', parseInt(e.target.value) || 0)}
+                        className={`w-full text-center text-xs bg-white border border-gray-200 rounded-md py-1.5 shadow-sm focus:ring-2 focus:ring-[#0021A5]/10 focus:border-[#0021A5]/30 outline-none font-medium disabled:bg-transparent disabled:border-transparent ${hoursColor}`}
+                      />
+                  </td>
+                  <td className="px-4 py-3">
+                     <div className="flex items-center text-xs text-gray-500 bg-white/50 border border-gray-100 rounded px-2 py-1.5 max-w-[120px]" title={dependencies}>
+                       {dependencies ? (
+                         <>
+                           <GitMerge size={12} className="mr-1 text-gray-400 flex-shrink-0" />
+                           <span className="truncate">{dependencies}</span>
+                         </>
+                       ) : (
+                         <span className="text-gray-300 italic pl-1">None</span>
+                       )}
+                     </div>
+                  </td>
+                  {!readOnly && (
+                    <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => onEditTask(task)} className="bg-white border border-gray-200 shadow-sm rounded p-1.5 text-[#0021A5] hover:bg-blue-50 transition-colors">
+                            <Pencil size={14} />
+                        </button>
+                        <button onClick={() => onDeleteTask(task.id)} className="bg-white border border-gray-200 shadow-sm rounded p-1.5 text-red-600 hover:bg-red-50 transition-colors">
+                            <Trash2 size={14} />
+                        </button>
+                        </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
+      
+      {/* Footer Add Button */}
+      {!readOnly && (
+        <div className="border-t border-gray-200 p-3 bg-gray-50">
+            <button 
+            onClick={onAddTask}
+            className="flex items-center gap-2 text-sm font-medium text-[#0021A5] hover:text-[#001b87] px-4 py-2.5 rounded-md bg-white border border-blue-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all w-full justify-center"
+            >
+            <Plus size={16} /> Add New Task
+            </button>
+        </div>
+      )}
     </div>
   );
 };

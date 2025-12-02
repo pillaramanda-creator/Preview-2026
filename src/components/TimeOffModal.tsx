@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TeamMember } from '../types';
+import type { TeamMember } from '../types';
 import { X, User, Building2 } from 'lucide-react';
 
 interface TimeOffModalProps {
@@ -20,12 +20,10 @@ export const TimeOffModal: React.FC<TimeOffModalProps> = ({ isOpen, onClose, onS
     e.preventDefault();
     if (!selectedId || !startDate || !endDate) return;
 
-    // Generate array of dates between start and end
     const dates: string[] = [];
     const current = new Date(startDate);
     const end = new Date(endDate);
     
-    // Safety check to prevent infinite loops if dates are messed up
     if (current > end) {
       alert("Start date must be before end date");
       return;
@@ -38,7 +36,6 @@ export const TimeOffModal: React.FC<TimeOffModalProps> = ({ isOpen, onClose, onS
 
     onSave(selectedId, dates);
     onClose();
-    // Reset form
     setStartDate('');
     setEndDate('');
     setSelectedId('');
